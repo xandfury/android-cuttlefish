@@ -1,6 +1,6 @@
 # This file is based on https://hub.docker.com/r/jrei/systemd-debian/.
 
-FROM debian:buster-slim AS cuttlefish-softgpu
+FROM debian:bookworm-slim AS cuttlefish-softgpu
 
 ENV container docker
 ENV LC_ALL C
@@ -51,6 +51,8 @@ RUN if test $(uname -m) == aarch64; then \
 
 # host packages and google-chrome (google-chrome*.deb)
 COPY ./out/*.deb ./android-cuttlefish/out/
+
+# RUN apt update && apt install -y libc6=2.34
 
 RUN cd /root/android-cuttlefish/out \
     && apt-get install --no-install-recommends -y -f ./cuttlefish-base_*.deb \
