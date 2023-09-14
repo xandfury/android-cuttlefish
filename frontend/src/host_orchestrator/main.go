@@ -21,13 +21,11 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/google/android-cuttlefish/frontend/src/host_orchestrator/orchestrator"
-	"github.com/google/android-cuttlefish/frontend/src/host_orchestrator/orchestrator/cvd"
 	"github.com/google/android-cuttlefish/frontend/src/host_orchestrator/orchestrator/debug"
 	apiv1 "github.com/google/android-cuttlefish/frontend/src/liboperator/api/v1"
 	"github.com/google/android-cuttlefish/frontend/src/liboperator/operator"
@@ -38,15 +36,14 @@ import (
 const (
 	DefaultSocketPath     = "/run/cuttlefish/operator"
 	DefaultHttpPort       = "1080"
-	DefaultHttpsPort      = "1443"
 	DefaultTLSCertDir     = "/etc/cuttlefish-common/host_orchestrator/cert"
 	DefaultStaticFilesDir = "static"    // relative path
 	DefaultInterceptDir   = "intercept" // relative path
 	DefaultWebUIUrl       = ""
 
 	defaultAndroidBuildURL          = "https://androidbuildinternal.googleapis.com"
-	defaultCVDBinAndroidBuildID     = "10234205"
-	defaultCVDBinAndroidBuildTarget = "aosp_cf_x86_64_phone-userdebug"
+	defaultCVDBinAndroidBuildID     = "10796991"
+	defaultCVDBinAndroidBuildTarget = "aosp_cf_x86_64_phone-trunk_staging-userdebug"
 	defaultCVDArtifactsDir          = "/var/lib/cuttlefish-common"
 )
 
@@ -102,11 +99,12 @@ func start(starters []func() error) {
 func main() {
 	socketPath := fromEnvOrDefault("ORCHESTRATOR_SOCKET_PATH", DefaultSocketPath)
 	httpPort := fromEnvOrDefault("ORCHESTRATOR_HTTP_PORT", DefaultHttpPort)
-	httpsPort := fromEnvOrDefault("ORCHESTRATOR_HTTPS_PORT", DefaultHttpsPort)
+	httpsPort := fromEnvOrDefault("ORCHESTRATOR_HTTPS_PORT", "")
 	tlsCertDir := fromEnvOrDefault("ORCHESTRATOR_TLS_CERT_DIR", DefaultTLSCertDir)
 	webUIUrlStr := fromEnvOrDefault("ORCHESTRATOR_WEBUI_URL", DefaultWebUIUrl)
 	certPath := filepath.Join(tlsCertDir, "cert.pem")
 	keyPath := filepath.Join(tlsCertDir, "key.pem")
+	cvdUser := fromEnvOrDefault("ORCHESTRATOR_CVD_USER", "")
 
 	pool := operator.NewDevicePool()
 	polledSet := operator.NewPolledSet()
@@ -120,12 +118,11 @@ func main() {
 	cvdBinAndroidBuildID := fromEnvOrDefault("ORCHESTRATOR_CVDBIN_ANDROID_BUILD_ID", defaultCVDBinAndroidBuildID)
 	cvdBinAndroidBuildTarget := fromEnvOrDefault("ORCHESTRATOR_CVDBIN_ANDROID_BUILD_TARGET", defaultCVDBinAndroidBuildTarget)
 	imRootDir := fromEnvOrDefault("ORCHESTRATOR_CVD_ARTIFACTS_DIR", defaultCVDArtifactsDir)
-	runtimesRootDir := filepath.Join(imRootDir, "runtimes")
 	imPaths := orchestrator.IMPaths{
 		RootDir:          imRootDir,
 		CVDToolsDir:      imRootDir,
 		ArtifactsRootDir: filepath.Join(imRootDir, "artifacts"),
-		RuntimesRootDir:  runtimesRootDir,
+		RuntimesRootDir:  filepath.Join(imRootDir, "runtimes"),
 	}
 	om := orchestrator.NewMapOM()
 	uamOpts := orchestrator.UserArtifactsManagerOpts{
@@ -133,41 +130,27 @@ func main() {
 		NameFactory: func() string { return uuid.New().String() },
 	}
 	uam := orchestrator.NewUserArtifactsManagerImpl(uamOpts)
-	opts := orchestrator.CVDToolInstanceManagerOpts{
-		ExecContext: exec.CommandContext,
-		CVDToolsVersion: orchestrator.AndroidBuild{
-			ID:     cvdBinAndroidBuildID,
-			Target: cvdBinAndroidBuildTarget,
-		},
-		Paths:                    imPaths,
-		OperationManager:         om,
-		UserArtifactsDirResolver: uam,
-		CVDStartTimeout:          3 * time.Minute,
-		HostValidator:            &orchestrator.HostValidator{ExecContext: exec.CommandContext},
-		BuildAPIFactory: func(credentials string) orchestrator.BuildAPI {
-			return orchestrator.NewAndroidCIBuildAPI(http.DefaultClient, abURL, credentials)
-		},
-		UUIDGen: func() string { return uuid.New().String() },
+	cvdToolsVersion := orchestrator.AndroidBuild{
+		ID:     cvdBinAndroidBuildID,
+		Target: cvdBinAndroidBuildTarget,
 	}
-	im := orchestrator.NewCVDToolInstanceManager(&opts)
 	debugStaticVars := debug.StaticVariables{
-		InitialCVDBinAndroidBuildID:     opts.CVDToolsVersion.ID,
-		InitialCVDBinAndroidBuildTarget: opts.CVDToolsVersion.Target,
+		InitialCVDBinAndroidBuildID:     cvdToolsVersion.ID,
+		InitialCVDBinAndroidBuildTarget: cvdToolsVersion.Target,
 	}
 	debugVarsManager := debug.NewVariablesManager(debugStaticVars)
-	deviceServerLoop := operator.SetupDeviceEndpoint(pool, config, socketPath)
-	go func() {
-		err := deviceServerLoop()
-		log.Fatal("Error with device endpoint: ", err)
-	}()
 	r := operator.CreateHttpHandlers(pool, polledSet, config, maybeIntercept)
 	imController := orchestrator.Controller{
-		InstanceManager:         im,
-		OperationManager:        om,
-		WaitOperationDuration:   2 * time.Minute,
-		UserArtifactsManager:    uam,
-		DebugVariablesManager:   debugVarsManager,
-		RuntimeArtifactsManager: cvd.NewRuntimeArtifactsManager(runtimesRootDir),
+		Config: orchestrator.Config{
+			Paths:                  imPaths,
+			CVDToolsVersion:        cvdToolsVersion,
+			AndroidBuildServiceURL: abURL,
+			CVDUser:                cvdUser,
+		},
+		OperationManager:      om,
+		WaitOperationDuration: 2 * time.Minute,
+		UserArtifactsManager:  uam,
+		DebugVariablesManager: debugVarsManager,
 	}
 	imController.AddRoutes(r)
 	// The host orchestrator currently has no use for this, since clients won't connect
@@ -184,8 +167,10 @@ func main() {
 
 	starters := []func() error{
 		func() error { return operator.SetupDeviceEndpoint(pool, config, socketPath)() },
-		func() error { return startHttpsServer(httpsPort, certPath, keyPath) },
 		func() error { return startHttpServer(httpPort) },
+	}
+	if httpsPort != "" {
+		starters = append(starters, func() error { return startHttpsServer(httpsPort, certPath, keyPath) })
 	}
 	start(starters)
 }

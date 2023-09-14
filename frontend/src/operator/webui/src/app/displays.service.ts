@@ -16,8 +16,8 @@ export class DisplaysService {
     this.devices,
     this.visibleDevicesChanged.pipe(mergeMap(() => this.devices))
   ).pipe(
-    map(deviceIds =>
-      deviceIds.map(deviceId => {
+    map(devices =>
+      devices.map(({device_id: deviceId}) => {
         return {id: deviceId, visible: this.isVisibleDevice(deviceId)};
       })
     )

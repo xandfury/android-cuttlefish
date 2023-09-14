@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package orchestrator
+package artifacts
 
 import (
 	"encoding/json"
@@ -42,16 +42,24 @@ func (e *BuildAPIError) Error() string {
 type AndroidCIBuildAPI struct {
 	BaseURL string
 
-	client      *http.Client
-	credentials string
+	client *http.Client
+	creds  string
 }
 
-func NewAndroidCIBuildAPI(client *http.Client, baseURL, credentials string) *AndroidCIBuildAPI {
+func NewAndroidCIBuildAPI(client *http.Client, baseURL string) *AndroidCIBuildAPI {
+	return NewAndroidCIBuildAPIWithOpts(client, baseURL, AndroidCIBuildAPIOpts{})
+}
+
+type AndroidCIBuildAPIOpts struct {
+	Credentials string
+}
+
+func NewAndroidCIBuildAPIWithOpts(client *http.Client, baseURL string, opts AndroidCIBuildAPIOpts) *AndroidCIBuildAPI {
 	return &AndroidCIBuildAPI{
 		BaseURL: baseURL,
 
-		client:      client,
-		credentials: credentials,
+		client: client,
+		creds:  opts.Credentials,
 	}
 }
 
@@ -121,8 +129,8 @@ func (s *AndroidCIBuildAPI) doGETCommon(url string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.credentials != "" {
-		req.Header["Authorization"] = []string{fmt.Sprintf("Bearer %s", s.credentials)}
+	if s.creds != "" {
+		req.Header["Authorization"] = []string{fmt.Sprintf("Bearer %s", s.creds)}
 	}
 	res, err := s.client.Do(req)
 	if err != nil {

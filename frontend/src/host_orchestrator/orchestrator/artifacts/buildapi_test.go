@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package orchestrator
+package artifacts
 
 import (
 	"bytes"
@@ -60,7 +60,7 @@ func TestDownloadArtifact(t *testing.T) {
 		}
 		return res, nil
 	})
-	srv := NewAndroidCIBuildAPI(mockClient, url, "")
+	srv := NewAndroidCIBuildAPI(mockClient, url)
 
 	var b bytes.Buffer
 	srv.DownloadArtifact("foo", "1", "xyzzy", io.Writer(&b))
@@ -85,7 +85,7 @@ func TestDownloadArtifactWithErrorResponse(t *testing.T) {
 			Body:       newResponseBody(errJSON),
 		}, nil
 	})
-	srv := NewAndroidCIBuildAPI(mockClient, url, "")
+	srv := NewAndroidCIBuildAPI(mockClient, url)
 
 	var b bytes.Buffer
 	err := srv.DownloadArtifact("foo", "1", "xyzzy", io.Writer(&b))
@@ -132,8 +132,11 @@ func TestCredentialsAddedToRequest(t *testing.T) {
 	})
 	downloadRequestURI := "/android-build/builds/X/Y/Z"
 	url := "https://someurl.fake"
-	srv := NewAndroidCIBuildAPI(mockClient, url, credentials)
+	opts := AndroidCIBuildAPIOpts{Credentials: credentials}
+	srv := NewAndroidCIBuildAPIWithOpts(mockClient, url, opts)
+
 	_, err := srv.doGETCommon(downloadRequestURI)
+
 	if err != nil {
 		t.Errorf("GET failed: %v", err)
 	}
@@ -152,8 +155,11 @@ func TestEmptyCredentialsIgnored(t *testing.T) {
 	})
 	downloadRequestURI := "/android-build/builds/X/Y/Z"
 	url := "https://someurl.fake"
-	srv := NewAndroidCIBuildAPI(mockClient, url, credentials)
+	opts := AndroidCIBuildAPIOpts{Credentials: credentials}
+	srv := NewAndroidCIBuildAPIWithOpts(mockClient, url, opts)
+
 	_, err := srv.doGETCommon(downloadRequestURI)
+
 	if err != nil {
 		t.Errorf("GET failed: %v", err)
 	}

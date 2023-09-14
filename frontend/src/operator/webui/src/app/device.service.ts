@@ -1,35 +1,57 @@
 import {Injectable} from '@angular/core';
-import {map, mergeMap, shareReplay} from 'rxjs/operators';
-import {Observable, Subject, merge} from 'rxjs';
+import {combineLatestWith, map, mergeMap, shareReplay} from 'rxjs/operators';
+import {Observable, Subject, BehaviorSubject} from 'rxjs';
 import {HttpClient} from '@angular/common/http';
-import {DeviceInfo} from './device-info-interface';
 import {DomSanitizer} from '@angular/platform-browser';
+import {DeviceInfo} from './device-info-interface';
+import {DeviceItem} from './device-item.interface';
 
 @Injectable({
   providedIn: 'root',
 })
 export class DeviceService {
-  private refreshSubject = new Subject<void>();
-  private deviceFromServer = this.httpClient
-    .get<string[]>('./devices')
-    .pipe(
-      map((deviceIds: string[]) =>
-        deviceIds.sort((a, b) => a.localeCompare(b, undefined, {numeric: true}))
-      )
-    );
+  private refreshSubject = new BehaviorSubject<void>(undefined);
 
-  private devices = merge(
-    this.deviceFromServer,
-    this.refreshSubject.pipe(mergeMap(() => this.deviceFromServer))
-  ).pipe(shareReplay(1));
+  private groupIdSubject = new Subject<string | null>();
+
+  private devices = this.groupIdSubject.pipe(
+    combineLatestWith(this.refreshSubject),
+    mergeMap(([groupId, _]) => {
+      if (groupId === null) {
+        return this.allDeviceFromServer;
+      }
+      return this.getDevicesByGroupIdFromServer(groupId);
+    }),
+    shareReplay(1)
+  );
+
+  private allDeviceFromServer = this.httpClient
+    .get<DeviceItem[]>('./devices')
+    .pipe(map(this.sortDevices));
+
+  private getDevicesByGroupIdFromServer(groupId: string) {
+    return this.httpClient
+      .get<DeviceItem[]>(`./devices?groupId=${groupId}`)
+      .pipe(map(this.sortDevices));
+  }
 
   constructor(
     private readonly httpClient: HttpClient,
     private sanitizer: DomSanitizer
   ) {}
 
+  private sortDevices(devices: DeviceItem[]) {
+    return devices.sort((a: DeviceItem, b: DeviceItem) =>
+      a['device_id'].localeCompare(b['device_id'], undefined, {numeric: true})
+    );
+  }
+
   refresh(): void {
     this.refreshSubject.next();
+  }
+
+  setGroupId(groupId: string | null) {
+    this.groupIdSubject.next(groupId);
   }
 
   getDevices() {

@@ -1,8 +1,9 @@
 module github.com/google/android-cuttlefish/frontend/src/liboperator
 
-go 1.17
+go 1.13
 
 require (
-	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
+	google.golang.org/grpc v1.40.0
+	google.golang.org/protobuf v1.25.0
 )

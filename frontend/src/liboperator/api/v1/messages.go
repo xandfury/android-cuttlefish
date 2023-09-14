@@ -62,9 +62,42 @@ type IceServer struct {
 	URLs []string `json:"urls"`
 }
 
+type FetchArtifactsRequest struct {
+	AndroidCIBundle *AndroidCIBundle `json:"android_ci_bundle"`
+}
+
+type FetchArtifactsResponse struct {
+	AndroidCIBundle *AndroidCIBundle `json:"android_ci_bundle"`
+}
+
+type ArtifactsBundleType int64
+
+const (
+	MainBundleType ArtifactsBundleType = iota
+	KernelBundleType
+	BootloaderBundleType
+	SystemImageBundleType
+)
+
+type AndroidCIBundle struct {
+	// If omitted, defaults to branch "aosp-main" and target `aosp_cf_x86_64_phone-trunk_staging-userdebug`.
+	Build *AndroidCIBuild `json:"build,omitempty"`
+	// If omitted, it defaults to the `main` bundle type.
+	Type ArtifactsBundleType `json:"type"`
+}
+
+// Use `X-Cutf-Host-Orchestrator-BuildAPI-Creds` http header to pass the Build API credentials.
 type CreateCVDRequest struct {
-	// REQUIRED.
+	// Environment canonical configuration.
+	// Structure: https://android.googlesource.com/device/google/cuttlefish/+/8bbd3b9cd815f756f332791d45c4f492b663e493/host/commands/cvd/parser/README.md
+	// Example: https://cs.android.com/android/platform/superproject/main/+/main:device/google/cuttlefish/host/cvd_test_configs/main_phone-main_watch.json;drc=b2e8f4f014abb7f9cb56c0ae199334aacb04542d
+	// NOTE: Using this as a black box for now as its content is unstable. Use the test configs pointed
+	// above as reference to build your config object.
+	EnvConfig interface{} `json:"env_config"`
+
+	// [DEPRECATED]. Use `Config` field.
 	CVD *CVD `json:"cvd"`
+	// [DEPRECATED]. Use `Config` field.
 	// Use to create multiple homogeneous instances.
 	AdditionalInstancesNum uint32 `json:"additional_instances_num,omitempty"`
 }
@@ -85,7 +118,7 @@ type AndroidCIBuild struct {
 }
 
 type AndroidCIBuildSource struct {
-	// Main build. If omitted, defaults to branch "aosp-master" and target `aosp_cf_x86_64_phone-userdebug`.
+	// Main build. If omitted, defaults to branch "aosp-main" and target `aosp_cf_x86_64_phone-trunk_staging-userdebug`.
 	MainBuild *AndroidCIBuild `json:"main_build,omitempty"`
 	// Uses this specific kernel build target if set.
 	KernelBuild *AndroidCIBuild `json:"kernel_build,omitempty"`
@@ -93,8 +126,6 @@ type AndroidCIBuildSource struct {
 	BootloaderBuild *AndroidCIBuild `json:"bootloader_build,omitempty"`
 	// Uses this specific system image build target if set.
 	SystemImageBuild *AndroidCIBuild `json:"system_image_build,omitempty"`
-	// Credentials to use when connecting to the build API
-	Credentials string `json:"credentials,omitempty"`
 }
 
 // Represents a user build.
@@ -128,6 +159,8 @@ type CVD struct {
 	Status string `json:"status"`
 	// [Output Only]
 	Displays []string `json:"displays"`
+	// [Output Only]
+	WebRTCDeviceID string `json:"webrtc_device_id"`
 }
 
 type DeviceInfoReply struct {
